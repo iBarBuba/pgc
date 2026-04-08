@@ -2,6 +2,7 @@
                     - Fixed splitting arguments issue.
                     - Flag `use_drop` / `--use-drop` currently affects all DROP statements; when disabled, DROP statements are commented out instead of executed.
                     - `coninhcount` i16 -> i32
+                    - Fix: ALTER SEQUENCE now emits RESTART WITH to prevent RESTART value below MINVALUE error when raising MINVALUE on existing sequences.
 
 2026-04-07      v1.0.11
 

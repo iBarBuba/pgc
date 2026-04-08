@@ -202,6 +202,9 @@ impl Sequence {
         if let Some(start_value) = self.start_value {
             // Use START WITH to update the catalog start_value; this avoids re-emitting the diff.
             clauses.push(format!("start with {start_value}"));
+            // RESTART WITH repositions the sequence immediately; without it, PostgreSQL restarts
+            // to the previously recorded start value which may violate a raised MINVALUE.
+            clauses.push(format!("restart with {start_value}"));
         }
         if let Some(increment_by) = self.increment_by {
             clauses.push(format!("increment by {increment_by}"));
@@ -362,7 +365,7 @@ mod tests {
 
         assert_eq!(
             sequence.get_alter_script(),
-            "alter sequence public.order_id_seq start with 1 increment by 5 minvalue 1 maxvalue 1000 cache 20 cycle owned by public.orders.id;\n\nalter sequence public.order_id_seq owner to postgres;\n\n",
+            "alter sequence public.order_id_seq start with 1 restart with 1 increment by 5 minvalue 1 maxvalue 1000 cache 20 cycle owned by public.orders.id;\n\nalter sequence public.order_id_seq owner to postgres;\n\n",
         );
     }
 
@@ -387,7 +390,45 @@ mod tests {
 
         assert_eq!(
             sequence.get_alter_script(),
-            "alter sequence audit.event_seq start with 10 increment by 2 no minvalue no maxvalue no cycle owned by \"my\"\"schema\".\"my.table\".column;\n\nalter sequence audit.event_seq owner to postgres;\n\n",
+            "alter sequence audit.event_seq start with 10 restart with 10 increment by 2 no minvalue no maxvalue no cycle owned by \"my\"\"schema\".\"my.table\".column;\n\nalter sequence audit.event_seq owner to postgres;\n\n",
+        );
+    }
+
+    #[test]
+    fn test_get_alter_script_restart_with_raised_minvalue() {
+        let sequence = Sequence::new(
+            "public".to_string(),
+            "payment_id_seq".to_string(),
+            "postgres".to_string(),
+            "bigint".to_string(),
+            Some(10000000),
+            Some(10000000),
+            Some(999999999),
+            Some(1),
+            true,
+            Some(1),
+            None,
+            None,
+            None,
+            None,
+        );
+
+        let script = sequence.get_alter_script();
+
+        assert!(
+            script.contains("start with 10000000"),
+            "expected 'start with 10000000' in: {script}"
+        );
+        assert!(
+            script.contains("restart with 10000000"),
+            "expected 'restart with 10000000' in: {script}"
+        );
+
+        let start_pos = script.find("start with 10000000").unwrap();
+        let restart_pos = script.find("restart with 10000000").unwrap();
+        assert!(
+            restart_pos > start_pos,
+            "expected 'restart with' to appear after 'start with' in: {script}"
         );
     }
 }
